@@ -71,7 +71,7 @@ static bool ReadDataString(CFSTR fileName, LPCSTR startID,
     {
       if (writeMode)
       {
-        if (pos + signatureEndSize > numBytesPrev)
+        if (pos + signatureEndSize >= numBytesPrev)
           break;
         const Byte b = buffer[pos++];
         if (b == 0)
@@ -82,7 +82,7 @@ static bool ReadDataString(CFSTR fileName, LPCSTR startID,
       }
       else
       {
-        if (pos + signatureStartSize > numBytesPrev)
+        if (pos + signatureStartSize >= numBytesPrev)
           break;
         const Byte b = buffer[pos++];
         if (b == ';' && memcmp(buffer + pos, startID + 1, signatureStartSize) == 0)
