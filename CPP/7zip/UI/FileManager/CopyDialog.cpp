@@ -30,6 +30,31 @@ static bool IsFileExistentAndNotDir(const wchar_t * lpszFile)
       && ((dwAttr & FILE_ATTRIBUTE_DIRECTORY) == 0);
 }
 
+// Walk up, extract archive basename.
+static void FindRealFileName_WalkUp(UString &pathPrefix, UString &realName)
+{
+  while (!pathPrefix.IsEmpty())
+  {
+    if (pathPrefix.Back() == L'\\')
+      pathPrefix.DeleteBack();
+
+    if (IsFileExistentAndNotDir(pathPrefix))
+    {
+      const int slash = pathPrefix.ReverseFind(L'\\');
+      const int dot = pathPrefix.ReverseFind(L'.');
+      const int start = (slash != -1) ? slash + 1 : 0;
+      const int end = (dot == -1 || dot <= start) ? pathPrefix.Len() : dot;
+      realName = pathPrefix.Mid(start, end - start);
+      return;
+    }
+
+    const int slash = pathPrefix.ReverseFind(L'\\');
+    if (slash == -1)
+      return;
+    pathPrefix.ReleaseBuf_SetEnd(slash);
+  }
+}
+
 bool CCopyDialog::OnInit()
 {
   #ifdef Z7_LANG
@@ -74,42 +99,7 @@ bool CCopyDialog::OnInit()
   }
   else
   {
-    while (!CurrentFolderPrefix.IsEmpty())
-    {
-      if (CurrentFolderPrefix.Back() == '\\')
-      {
-        CurrentFolderPrefix.DeleteBack();
-      }
-
-      if (IsFileExistentAndNotDir(CurrentFolderPrefix))
-      {
-        int n = CurrentFolderPrefix.ReverseFind(L'\\');
-        int m = CurrentFolderPrefix.ReverseFind(L'.');
-        if (n != -1)
-        {
-          n++;
-        }
-        else
-        {
-          n = 0;
-        }
-        if (m == -1 || m <= n) m = CurrentFolderPrefix.Len();
-        RealFileName = CurrentFolderPrefix.Mid(n, m - n);
-        break;
-      }
-      else
-      {
-        int n = CurrentFolderPrefix.ReverseFind(L'\\');
-        if (n != -1)
-        {
-          CurrentFolderPrefix.ReleaseBuf_SetEnd(n);
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
+    FindRealFileName_WalkUp(CurrentFolderPrefix, RealFileName);
   }
 
   return CModalDialog::OnInit();

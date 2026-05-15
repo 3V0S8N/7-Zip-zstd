@@ -15,10 +15,10 @@ namespace NControl {
 class CDialog: public CWindow
 {
   // Z7_CLASS_NO_COPY(CDialog)
-protected:
+private:
   SIZE _minTrackSize;
 public:
-  CDialog(HWND wnd = NULL): CWindow(wnd) { _minTrackSize.cx = 0; _minTrackSize.cy = 0; }
+  explicit CDialog(HWND wnd = nullptr): CWindow(wnd) { _minTrackSize.cx = 0; _minTrackSize.cy = 0; }
   virtual ~CDialog() {}
 
   void Set_MinTrackSize_FromCurrent(int numX, int denX, int numY, int denY);

@@ -61,7 +61,7 @@ class CExtractDialog: public NWindows::NControl::CModalDialog
   virtual bool OnButtonClicked(unsigned buttonID, HWND buttonHWND) Z7_override;
   virtual void OnOK() Z7_override;
   void OnButtonOpenPath();
-  virtual bool OnCommand(unsigned code, unsigned itemID, LPARAM lParam) Z7_override;
+  bool OnCommand(unsigned code, unsigned itemID, LPARAM lParam) Z7_override;
 
   #ifndef Z7_NO_REGISTRY
 
@@ -85,11 +85,11 @@ public:
   UString Password;
   #endif
   bool PathMode_Force;
-  bool OverwriteMode_Force;
+  bool OverwriteMode_Force = false;
   NExtract::NPathMode::EEnum PathMode;
   NExtract::NOverwriteMode::EEnum OverwriteMode;
 
-  bool DeleteSourceFile;
+  bool DeleteSourceFile = false;
 
   #ifndef Z7_SFX
   // CBoolPair AltStreams;
@@ -110,9 +110,7 @@ public:
   }
 
   CExtractDialog():
-    PathMode_Force(false),
-    OverwriteMode_Force(false),
-    DeleteSourceFile(false)
+    PathMode_Force(false)
   {
     ElimDup.Val = true;
   }

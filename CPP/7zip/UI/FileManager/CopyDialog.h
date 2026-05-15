@@ -27,7 +27,7 @@ class CCopyDialog: public NWindows::NControl::CModalDialog
   void ShowPathFreeSpace(UString & strPath);
 
 public:
-  CCopyDialog(): OpenOutputFolder(false), DeleteSourceFile(false), Close7Zip(false) {}
+  CCopyDialog() {}
 
   UString Title;
   UString Static;
@@ -35,9 +35,9 @@ public:
   UString Info;
   UStringVector Strings;
 
-  bool OpenOutputFolder;
-  bool DeleteSourceFile;
-  bool Close7Zip;
+  bool OpenOutputFolder = false;
+  bool DeleteSourceFile = false;
+  bool Close7Zip = false;
 
   UString CurrentFolderPrefix;
   UString RealFileName;

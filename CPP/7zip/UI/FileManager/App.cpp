@@ -45,6 +45,30 @@ extern bool g_bProcessError;
 
 #define kTempDirPrefix FTEXT("7zE")
 
+// Walk up, delete found archive.
+static void DeleteSourceArchive_WalkUp(CPanel &srcPanel, UString srcFilePath)
+{
+  while (!srcFilePath.IsEmpty())
+  {
+    if (srcFilePath.Back() == L'\\')
+      srcFilePath.DeleteBack();
+    const DWORD dwAttr = GetFileAttributesW(srcFilePath);
+
+    if (dwAttr != INVALID_FILE_ATTRIBUTES)
+    {
+      if (dwAttr & FILE_ATTRIBUTE_ARCHIVE)
+        NDir::DeleteFileIfArchive(us2fs(srcFilePath));
+      return;
+    }
+
+    const int n = srcFilePath.ReverseFind(L'\\');
+    if (n == -1)
+      return;
+    srcPanel.OpenParentFolder();
+    srcFilePath.ReleaseBuf_SetEnd(n);
+  }
+}
+
 void CPanelCallbackImp::OnTab()
 {
   if (g_App.NumPanels != 1)
@@ -938,38 +962,7 @@ void CApp::OnCopy(bool move, bool copyToSame, unsigned srcPanelIndex)
     {
       UString srcFilePath(srcPanel._currentFolderPrefix);
       srcPanel.OpenParentFolder();
-
-      while (!srcFilePath.IsEmpty())
-      {
-        if (srcFilePath.Back() == '\\')
-        {
-          srcFilePath.DeleteBack();
-        }
-        DWORD dwAttr = GetFileAttributesW(srcFilePath);
-
-        if (dwAttr == INVALID_FILE_ATTRIBUTES)
-        {
-          int n = srcFilePath.ReverseFind(L'\\');
-          if (n != -1)
-          {
-            srcPanel.OpenParentFolder();
-            srcFilePath.ReleaseBuf_SetEnd(n);
-          }
-          else
-          {
-            break;
-          }
-        }
-        else if (dwAttr & FILE_ATTRIBUTE_ARCHIVE)
-        {
-          NDir::DeleteFileIfArchive(us2fs(srcFilePath));
-          break;
-        }
-        else // directory or other non-archive
-        {
-          break;
-        }
-      }
+      DeleteSourceArchive_WalkUp(srcPanel, srcFilePath);
     }
     if (close7Zip)
     {
