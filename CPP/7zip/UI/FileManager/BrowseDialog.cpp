@@ -1,6 +1,8 @@
 // BrowseDialog.cpp
- 
+
 #include "StdAfx.h"
+
+#include <array>
 
 #include "../../../Common/MyWindows.h"
 
@@ -628,13 +630,13 @@ void FormatPathFreeSpace(UString &strPath, UString &strText)
   if (!GetDiskFreeSpaceExW(strPath, &freeBytes, &totalBytes, &totalFree))
     return;
 
-  wchar_t szFree[40];
-  wchar_t szTotal[40];
-  FreeSpace_ConvertSizeToString(totalFree.QuadPart, szFree);
-  FreeSpace_ConvertSizeToString(totalBytes.QuadPart, szTotal);
-  strText = szFree;
+  std::array<wchar_t, 40> szFree;
+  std::array<wchar_t, 40> szTotal;
+  FreeSpace_ConvertSizeToString(totalFree.QuadPart, szFree.data());
+  FreeSpace_ConvertSizeToString(totalBytes.QuadPart, szTotal.data());
+  strText = szFree.data();
   strText += L" Free (Total: ";
-  strText += szTotal;
+  strText += szTotal.data();
   strText += L")";
 }
 
