@@ -8,6 +8,11 @@
 
 #define IDX_EXTRACT_OPEN_TRG_FLD     104
 
+#define IDC_EXTRACT_BUTTON_OPEN_PATH            105
+#define IDC_STATIC_EXTRACT_FREE_SPACE           107
+#define IDC_CHECK_DELETE_SOURCE_FILE            108
+#define IDC_GUI_AFTER_EXTRACT                   109
+
 #define IDE_EXTRACT_PASSWORD         120
 
 #define IDE_EXTRACT_NAME             130

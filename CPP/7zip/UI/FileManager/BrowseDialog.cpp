@@ -566,6 +566,79 @@ wchar_t *Browse_ConvertSizeToString(UInt64 v, wchar_t *s)
   return s;
 }
 
+
+// "<N>.<NN> <unit>B" with 2 decimals, or "<N> B".
+void FreeSpace_ConvertSizeToString(UInt64 v, wchar_t *s);
+void FreeSpace_ConvertSizeToString(UInt64 v, wchar_t *s)
+{
+  unsigned shift = 0;
+  wchar_t unit = 0;
+  if      (v >= ((UInt64)1 << 50)) { shift = 50; unit = 'P'; }
+  else if (v >= ((UInt64)1 << 40)) { shift = 40; unit = 'T'; }
+  else if (v >= ((UInt64)1 << 30)) { shift = 30; unit = 'G'; }
+  else if (v >= ((UInt64)1 << 20)) { shift = 20; unit = 'M'; }
+  else if (v >= ((UInt64)1 << 10)) { shift = 10; unit = 'K'; }
+
+  if (unit == 0)
+  {
+    s = ConvertUInt64ToString(v, s);
+    *s++ = ' ';
+    *s++ = 'B';
+    *s = 0;
+    return;
+  }
+
+  const UInt64 whole = v >> shift;
+  UInt64 frac = ((v & (((UInt64)1 << shift) - 1)) * 100
+                  + ((UInt64)1 << (shift - 1))) >> shift;
+  if (frac >= 100)
+    frac = 99;
+
+  s = ConvertUInt64ToString(whole, s);
+  *s++ = '.';
+  *s++ = (wchar_t)('0' + (unsigned)(frac / 10));
+  *s++ = (wchar_t)('0' + (unsigned)(frac % 10));
+  *s++ = ' ';
+  *s++ = unit;
+  *s++ = 'B';
+  *s = 0;
+}
+
+
+// Trims path, then formats free/total.
+void FormatPathFreeSpace(UString &strPath, UString &strText);
+void FormatPathFreeSpace(UString &strPath, UString &strText)
+{
+  strText.Empty();
+  strPath.Trim();
+  for (;;)
+  {
+    const DWORD attr = GetFileAttributesW(strPath);
+    if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY))
+      break;
+    const int n = strPath.ReverseFind(L'\\');
+    if (n == -1)
+      return;
+    strPath.ReleaseBuf_SetEnd(n);
+  }
+
+  ULARGE_INTEGER freeBytes;
+  ULARGE_INTEGER totalBytes;
+  ULARGE_INTEGER totalFree;
+  if (!GetDiskFreeSpaceExW(strPath, &freeBytes, &totalBytes, &totalFree))
+    return;
+
+  wchar_t szFree[40];
+  wchar_t szTotal[40];
+  FreeSpace_ConvertSizeToString(totalFree.QuadPart, szFree);
+  FreeSpace_ConvertSizeToString(totalBytes.QuadPart, szTotal);
+  strText = szFree;
+  strText += L" Free (Total: ";
+  strText += szTotal;
+  strText += L")";
+}
+
+
 // Reload changes DirPrefix. Don't send DirPrefix in pathPrefix parameter
 
 HRESULT CBrowseDialog::Reload(const UString &pathPrefix, const UString &selectedName)

@@ -34,6 +34,9 @@ using namespace NWindows;
 using namespace NFile;
 using namespace NDir;
 
+// Error-state flag defined in ProgressDialog2.cpp; gates post-extract actions.
+extern bool g_bProcessError;
+
 static const wchar_t * const kIncorrectOutDir = L"Incorrect output directory path";
 
 #ifndef Z7_SFX
@@ -207,7 +210,10 @@ HRESULT ExtractGUI(
     CExtractCallbackImp *extractCallback,
     HWND hwndParent)
 {
+  bool deleteSourceFile = false;
+
   messageWasDisplayed = false;
+  g_bProcessError = false;
 
   CThreadExtracting extracter;
   /*
@@ -267,7 +273,9 @@ HRESULT ExtractGUI(
       options.OverwriteMode = dialog.OverwriteMode;
       options.PathMode = dialog.PathMode;
       options.ElimDup = dialog.ElimDup;
-      
+
+      deleteSourceFile = dialog.DeleteSourceFile;
+
       #ifndef Z7_SFX
       OpnTrgFold = dialog.OpnTrgFold.Val;
       // options.NtOptions.AltStreams = dialog.AltStreams;
@@ -332,6 +340,12 @@ HRESULT ExtractGUI(
 
   RINOK(extracter.Create(title, hwndParent))
   messageWasDisplayed = extracter.ThreadFinishedOK && extracter.MessagesDisplayed;
+
+  if (extracter.ThreadFinishedOK && !g_bProcessError && deleteSourceFile)
+  {
+    for (unsigned i = 0; i < archivePathsFull.Size(); i++)
+      DeleteFileIfArchive(us2fs(archivePathsFull[i]));
+  }
 
 #ifndef Z7_SFX
   // browse/navigate to target path:

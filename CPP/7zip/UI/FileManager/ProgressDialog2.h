@@ -135,6 +135,7 @@ private:
   UString _pause_String;
   UString _continue_String;
   UString _paused_String;
+  UString cancelString;
 
   int _buttonSizeX;
   int _buttonSizeY;
@@ -142,6 +143,12 @@ private:
   UINT_PTR _timer;
 
   UString _title;
+
+  static const int kNumTrayIcons = 15;
+  static const int kTrayPercentPerIcon = 7;
+  HICON _iconSysTrayArray[kNumTrayIcons];
+  int _sysTrayIconArrayId;
+  HMENU _sysTrayMenu;
 
   class CU64ToI32Converter
   {
@@ -230,6 +237,7 @@ private:
   void OnPriorityButton();
   bool OnButtonClicked(unsigned buttonID, HWND buttonHWND) Z7_override;
   bool OnMessage(UINT message, WPARAM wParam, LPARAM lParam) Z7_override;
+  bool OnTrayNotification(LPARAM lParam);
 
   void SetTitleText();
   void ShowSize(unsigned id, UInt64 val, UInt64 &prev);
@@ -265,6 +273,9 @@ public:
 
   INT_PTR Create(const UString &title, NWindows::CThread &thread, HWND wndParent = NULL);
 
+  bool CreateSysTrayMenu();
+  bool LoadSysTrayIcons();
+  void UpdateSysTrayIcon(bool addIcon, bool updateTip);
 
   /* how it works:
      1) the working thread calls ProcessWasFinished()

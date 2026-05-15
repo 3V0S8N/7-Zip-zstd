@@ -13,17 +13,50 @@
 #include "../../../Windows/ErrorMsg.h"
 
 #include "../GUI/ExtractRes.h"
+#include "resourceGui.h"
 
 #include "LangUtils.h"
 
 #include "DialogSize.h"
 #include "ProgressDialog2.h"
 #include "ProgressDialog2Res.h"
+#include "ProgressDialog2IconRes.h"
 
 using namespace NWindows;
 
 extern HINSTANCE g_hInstance;
 extern bool g_DisableUserQuestions;
+// Set true by CProgressDialog when error messages occur.
+bool g_bProcessError = false;
+
+#define WM_TRAY_ICON_NOTIFY  (WM_APP + 10)
+#define ID_SYSTRAY_ICON      100
+
+static BOOL SetSysTray(HWND dlg,
+    DWORD message,
+    UINT id,
+    UINT flags,
+    UINT callbackMessage,
+    HICON icon,
+    const wchar_t *tip)
+{
+  NOTIFYICONDATAW data;
+  ZeroMemory(&data, sizeof(NOTIFYICONDATAW));
+
+  data.cbSize           = sizeof(NOTIFYICONDATAW);
+  data.hWnd             = dlg;
+  data.uID              = id;
+  data.uFlags           = flags;
+  data.uCallbackMessage = callbackMessage;
+  data.hIcon            = icon;
+
+  if (tip != NULL && *tip != 0)
+  {
+    ::lstrcpynW(data.szTip, tip, sizeof(data.szTip) / sizeof(WCHAR));
+  }
+
+  return Shell_NotifyIconW(message, &data);
+}
 
 static const UINT_PTR kTimerID = 3;
 
@@ -270,6 +303,10 @@ CProgressDialog::CProgressDialog():
     IconID(-1),
     MainWindow(NULL)
 {
+  for (int i = 0; i < kNumTrayIcons; i++)
+    _iconSysTrayArray[i] = NULL;
+  _sysTrayIconArrayId = -1;
+  _sysTrayMenu = NULL;
 
   if (_dialogCreatedEvent.Create() != S_OK)
     throw 1334987;
@@ -389,6 +426,7 @@ bool CProgressDialog::OnInit()
   LangString(IDS_PROGRESS_FOREGROUND, _foreground_String);
   LangString(IDS_CONTINUE, _continue_String);
   LangString(IDS_PROGRESS_PAUSED, _paused_String);
+  LangString(IDS_CANCEL, cancelString);
 
   SetText(_title);
   SetPauseText();
@@ -427,6 +465,8 @@ bool CProgressDialog::OnInit()
   CheckNeedClose();
 
   SetTaskbarProgressState();
+
+  Set_MinTrackSize_FromCurrent(2, 3, 3, 4);
 
   return CModalDialog::OnInit();
 }
@@ -476,7 +516,13 @@ bool CProgressDialog::OnSize(WPARAM /* wParam */, int xSize, int ySize)
   int yPos = ySize - my - _buttonSizeY;
 
   ChangeSubWindowSizeX(GetItem(IDT_PROGRESS_STATUS), xSize - mx * 2);
-  ChangeSubWindowSizeX(GetItem(IDT_PROGRESS_FILE_NAME), xSize - mx * 2);
+  {
+    RECT rect;
+    GetClientRectOfItem(IDC_PROGRESS_PERCENT, rect);
+    int percent_width = rect.right - rect.left;
+    MoveItem(IDC_PROGRESS_PERCENT, xSize - mx - percent_width, rect.top, percent_width, rect.bottom - rect.top);
+    ChangeSubWindowSizeX(GetItem(IDT_PROGRESS_FILE_NAME), xSize - (mx * 2) - percent_width);
+  }
   ChangeSubWindowSizeX(GetItem(IDC_PROGRESS1), xSize - mx * 2);
 
   int bSizeX = _buttonSizeX;
@@ -841,9 +887,18 @@ void CProgressDialog::UpdateStatInfo(bool showAll)
       {
         _prevPercentValue = percent;
         needSetTitle = true;
+
+        wchar_t szPercent[32];
+        wchar_t *p = ConvertUInt64ToString(percent, szPercent);
+        *p++ = L'%';
+        *p = 0;
+        SetItemText(IDC_PROGRESS_PERCENT, szPercent);
+
+        if (_background && _iconSysTrayArray[0] != NULL)
+          UpdateSysTrayIcon(false, true);
       }
     }
-    
+
     {
       wchar_t s[64];
       
@@ -1051,6 +1106,9 @@ bool CProgressDialog::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
   switch (message)
   {
+    case WM_TRAY_ICON_NOTIFY:
+      return OnTrayNotification(lParam);
+
     case kCloseMessage:
     {
       if (_timer)
@@ -1066,6 +1124,25 @@ bool CProgressDialog::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
            later, when MessageBox() will be closed */
         _externalCloseMessageWasReceived = true;
         break;
+      }
+      if (_background)
+      {
+        SetSysTray(_window, NIM_DELETE, ID_SYSTRAY_ICON, 0, 0, NULL, NULL);
+        if (MainWindow != 0)
+          ShowWindow(MainWindow, SW_SHOW);
+      }
+      if (_iconSysTrayArray[0] != NULL)
+      {
+        for (int i = 0; i < kNumTrayIcons; i++)
+        {
+          DestroyIcon(_iconSysTrayArray[i]);
+          _iconSysTrayArray[i] = NULL;
+        }
+      }
+      if (_sysTrayMenu != NULL)
+      {
+        ::DestroyMenu(_sysTrayMenu);
+        _sysTrayMenu = NULL;
       }
       return OnExternalCloseMessage();
     }
@@ -1123,8 +1200,12 @@ void CProgressDialog::SetTitleText()
 
 void CProgressDialog::SetPauseText()
 {
-  SetItemText(IDB_PAUSE, Sync.Get_Paused() ? _continue_String : _pause_String);
+  LPCWSTR pszText = Sync.Get_Paused() ? _continue_String : _pause_String;
+  SetItemText(IDB_PAUSE, pszText);
   SetTitleText();
+
+  if (_sysTrayMenu != NULL)
+    ModifyMenuW(_sysTrayMenu, IDB_PAUSE, MF_BYCOMMAND, IDB_PAUSE, pszText);
 }
 
 void CProgressDialog::OnPauseButton()
@@ -1152,6 +1233,26 @@ void CProgressDialog::OnPriorityButton()
   _background = !_background;
   #ifndef UNDER_CE
   SetPriorityClass(GetCurrentProcess(), _background ? IDLE_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS);
+  if (!_background) // foreground
+  {
+    if (_iconSysTrayArray[0] != NULL)
+    {
+      if (MainWindow != 0)
+        ShowWindow(MainWindow, SW_SHOW);
+      Show(SW_SHOW);
+      SetSysTray(_window, NIM_DELETE, ID_SYSTRAY_ICON, 0, 0, NULL, NULL);
+    }
+  }
+  else
+  {
+    if (LoadSysTrayIcons())
+    {
+      if (MainWindow != 0)
+        ShowWindow(MainWindow, SW_HIDE);
+      Show(SW_HIDE);
+      UpdateSysTrayIcon(true, true);
+    }
+  }
   #endif
   SetPriorityText();
 }
@@ -1215,6 +1316,8 @@ void CProgressDialog::UpdateMessagesDialog()
   }
   if (!messages.IsEmpty())
   {
+    g_bProcessError = true;
+
     FOR_VECTOR (i, messages)
       AddMessage(messages[i]);
     // SetColumnWidthAuto() can be slow for big number of files.
@@ -1395,6 +1498,82 @@ void CProgressDialog::CopyToClipboard()
   ClipboardSetText(*this, s);
 }
 
+
+bool CProgressDialog::LoadSysTrayIcons()
+{
+  if (_iconSysTrayArray[0] != NULL) return true;
+
+  int id = IDI_SYSTRAY_0;
+  for (int n = 0; n < kNumTrayIcons; n++, id++)
+  {
+    _iconSysTrayArray[n] = (HICON)LoadImage(g_hInstance, MAKEINTRESOURCE(id), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
+  }
+
+  return _iconSysTrayArray[0] != NULL;
+}
+
+void CProgressDialog::UpdateSysTrayIcon(bool addIcon, bool updateTip)
+{
+  int newIconId = (_prevPercentValue / kTrayPercentPerIcon) % kNumTrayIcons;
+  bool updateIcon = newIconId > _sysTrayIconArrayId;
+
+  if (updateIcon || updateTip || addIcon)
+  {
+    wchar_t tip[64];
+    wchar_t *p = ConvertUInt64ToString(_prevPercentValue, tip);
+    *p++ = L'%';
+    *p = 0;
+
+    UINT flags = NIF_TIP;
+    if (updateIcon)
+      flags |= NIF_ICON;
+
+    if (!SetSysTray(_window, NIM_MODIFY, ID_SYSTRAY_ICON, flags, 0, _iconSysTrayArray[newIconId], tip))
+    {
+      SetSysTray(_window, NIM_DELETE, ID_SYSTRAY_ICON, 0, 0, NULL, NULL);
+      SetSysTray(_window, NIM_ADD, ID_SYSTRAY_ICON, NIF_ICON | NIF_MESSAGE | NIF_TIP, WM_TRAY_ICON_NOTIFY,
+          _iconSysTrayArray[newIconId], tip);
+    }
+
+    _sysTrayIconArrayId = newIconId;
+  }
+}
+
+bool CProgressDialog::CreateSysTrayMenu()
+{
+  if (_sysTrayMenu != NULL) return true;
+
+  _sysTrayMenu = CreatePopupMenu();
+  AppendMenuW(_sysTrayMenu, MF_STRING, IDB_PROGRESS_BACKGROUND, _foreground_String);
+  AppendMenuW(_sysTrayMenu, MF_STRING, IDB_PAUSE, Sync.Get_Paused() ? _continue_String : _pause_String);
+  AppendMenuW(_sysTrayMenu, MF_STRING, IDCANCEL, cancelString);
+  return _sysTrayMenu != NULL;
+}
+
+bool CProgressDialog::OnTrayNotification(LPARAM lParam)
+{
+  switch (lParam)
+  {
+    case WM_RBUTTONUP:
+      if (CreateSysTrayMenu())
+      {
+        POINT point;
+        ::GetCursorPos(&point);
+        ::TrackPopupMenu(_sysTrayMenu, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_RIGHTBUTTON, point.x, point.y, 0, _window, NULL);
+        // BUGFIX: see "PRB: Menus for Notification Icons Don't Work Correctly"
+        ::PostMessage(_window, WM_NULL, 0, 0);
+      }
+      break;
+
+    case WM_LBUTTONUP:
+      OnPriorityButton();
+      break;
+
+    default:
+      break;
+  }
+  return false;
+}
 
 static THREAD_FUNC_DECL MyThreadFunction(void *param)
 {
